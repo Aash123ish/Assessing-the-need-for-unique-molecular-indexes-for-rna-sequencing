@@ -1,0 +1,95 @@
+---
+title: "Gene Expression Analysis (RPK and TPM)"
+author: "Mark Zeimann and Aashish Chaudhary"
+date: "```15 May 2024```"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# Load necessary packages
+library(ggplot2)
+library(readr)
+library(dplyr)
+library(tidyr)
+```
+
+## Introduction
+
+This document analyzes RNA-seq data, focusing on relationships between expression metrics, discrepancies, and gene characteristics.
+
+## Data Loading and Preparation
+
+Load and merge necessary datasets for each sample.
+
+```{r load-data}
+# Load the previously saved gene length data
+gene_annotations <- read.csv("gene_annotations_with_lengths.csv")
+
+# Define the sample ID
+sample_id <- "SRR6250992"
+
+# Load counts data for this sample
+counts_file <- paste0(sample_id, "_counts.txt")
+counts_data <- read.table(counts_file, header = TRUE, sep = "\t", check.names = FALSE)
+
+# Merge counts data with gene annotations
+merged_data <- merge(counts_data, gene_annotations, by.x = "Geneid", by.y = "gene_id")
+
+# Ensure numeric consistency in Gene_Length
+merged_data$Gene_Length <- as.numeric(merged_data$Gene_Length)
+
+# Replace NA values in merged data
+merged_data[is.na(merged_data)] <- 0
+
+# Log transformation for counts
+sample_col_name <- paste0(sample_id, ".bam")
+merged_data$log_Counts <- log(merged_data[[sample_col_name]] + 1)
+
+# Total counts for the sample
+total_counts <- sum(merged_data[[sample_col_name]], na.rm = TRUE)
+
+# RPKM computation
+factor <- merged_data$Gene_Length * total_counts
+merged_data$RPKM <- (merged_data[[sample_col_name]] * 1e9) / factor
+
+# Handling NA values in RPKM
+merged_data$RPKM[is.na(merged_data$RPKM)] <- 0
+
+# RPK and TPM
+merged_data$RPK <- merged_data[[sample_col_name]] / (merged_data$Gene_Length / 1000)
+
+total_RPK <- sum(merged_data$RPK)
+merged_data$TPM <- (merged_data$RPK / total_RPK) * 1e6
+```
+
+## Correlation and Statistical Tests
+
+```{r correlation-tests}
+# Calculate discrepancies
+merged_data$discrepancy <- abs(merged_data$log_Counts - log(merged_data$TPM + 1))
+
+# Correlation between discrepancies and expression metrics
+cor_test_tpm_discrepancy <- cor.test(merged_data$discrepancy, merged_data$TPM)
+cor_test_rpkm_discrepancy <- cor.test(merged_data$discrepancy, merged_data$RPKM)
+
+print(cor_test_tpm_discrepancy)
+print(cor_test_rpkm_discrepancy)
+
+# Binary flag for large discrepancies
+large_discrepancy_genes <- merged_data %>% 
+    filter(discrepancy > quantile(discrepancy, 0.95)) %>%
+    arrange(desc(discrepancy))
+
+merged_data$large_discrepancy_flag <- ifelse(merged_data$Geneid %in% large_discrepancy_genes$Geneid, "Large", "Small")
+
+# T-tests comparing expression metrics between groups
+t_test_tpm_discrepancy <- t.test(TPM ~ large_discrepancy_flag, data = merged_data)
+t_test_rpkm_discrepancy <- t.test(RPKM ~ large_discrepancy_flag, data = merged_data)
+
+print(t_test_tpm_discrepancy)
+print(t_test_rpkm_discrepancy)
+```
+
+## Conclusion
+
+This analysis explores expression metrics, discrepancies, and their relationships, providing valuable insights.
