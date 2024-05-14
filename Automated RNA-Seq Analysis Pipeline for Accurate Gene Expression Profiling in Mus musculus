@@ -48,7 +48,7 @@ STAR --genomeDir "$genomeDir" \
      --readFilesIn "${outputPrefix}1.umi.fastq" "${outputPrefix}2.umi.fastq" \
      --outFileNamePrefix "$outputPrefix" \
      --outSAMtype BAM SortedByCoordinate \
-     --limitOutSJcollapsed 2000000  # Increased limit for SJ collapsed
+     --limitOutSJcollapsed 4000000  # Increased limit for SJ collapsed
 
 if [ ! -f "${outputPrefix}Aligned.sortedByCoord.out.bam" ]; then
   echo "Alignment failed or output BAM not found."
