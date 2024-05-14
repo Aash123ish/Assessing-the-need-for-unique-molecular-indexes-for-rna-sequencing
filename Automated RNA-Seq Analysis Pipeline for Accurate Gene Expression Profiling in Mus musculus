@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # Set necessary directories and parameters
-genomeDir="/path/to/GRCm39Index"  # Make sure this is the correct path to your genome index
-gtfFile="Mus_musculus.GRCm39.111.gtf"
-bamFile="SRR6250992.bam"
-outputPrefix="SRR6250992_"
+genomeDir="/path/to/GRCm39Index"  # Path to the genome index directory
+gtfFile="Mus_musculus.GRCm39.111.gtf"  # GTF file for the Mus musculus genome
+bamFile="SRR6250992.bam"  # Input BAM file
+outputPrefix="SRR6250992_"  # Prefix for all output files
 
 # Check if genome directory exists
 if [ ! -d "$genomeDir" ]; then
@@ -32,9 +32,9 @@ echo "Extracting UMIs from reads..."
 umi_tools extract --bc-pattern=NNNNNN \
   --stdin "${outputPrefix}1.fastq" \
   --stdout "${outputPrefix}1.umi.fastq" \
-  --read2-in="${outputPrefix}2.fastq" \
-  --read2-out="${outputPrefix}2.umi.fastq" \
-  --log=extract.log
+  --read2-in "${outputPrefix}2.fastq" \
+  --read2-out "${outputPrefix}2.umi.fastq" \
+  --log extract.log
 
 # Check if UMI extracted fastq files exist
 if [ ! -f "${outputPrefix}1.umi.fastq" ] || [ ! -f "${outputPrefix}2.umi.fastq" ]; then
@@ -48,7 +48,7 @@ STAR --genomeDir "$genomeDir" \
      --readFilesIn "${outputPrefix}1.umi.fastq" "${outputPrefix}2.umi.fastq" \
      --outFileNamePrefix "$outputPrefix" \
      --outSAMtype BAM SortedByCoordinate \
-     --limitOutSJcollapsed 4000000  # Increased limit for SJ collapsed
+     --limitOutSJcollapsed 4000000  # Increased limit for splice junctions
 
 if [ ! -f "${outputPrefix}Aligned.sortedByCoord.out.bam" ]; then
   echo "Alignment failed or output BAM not found."
@@ -59,7 +59,7 @@ fi
 echo "Deduplicating based on UMIs..."
 umi_tools dedup --stdin="${outputPrefix}Aligned.sortedByCoord.out.bam" \
                 --stdout="${outputPrefix}fmt.deumi.sorted.bam" \
-                --log=dedup.log
+                --log dedup.log
 
 if [ ! -f "${outputPrefix}fmt.deumi.sorted.bam" ]; then
   echo "Deduplication failed or output BAM not found."
