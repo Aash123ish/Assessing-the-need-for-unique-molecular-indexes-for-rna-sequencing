@@ -1,0 +1,82 @@
+#!/bin/bash
+
+# Set necessary directories and parameters
+genomeDir="/path/to/GRCm39Index"  # Make sure this is the correct path to your genome index
+gtfFile="Mus_musculus.GRCm39.111.gtf"
+bamFile="SRR6250992.bam"
+outputPrefix="SRR6250992_"
+
+# Check if genome directory exists
+if [ ! -d "$genomeDir" ]; then
+  echo "Genome directory not found: $genomeDir"
+  exit 1
+fi
+
+# Check if input files exist
+if [ ! -f "$bamFile" ]; then
+  echo "Input BAM file not found: $bamFile"
+  exit 1
+fi
+
+if [ ! -f "$gtfFile" ]; then
+  echo "GTF file not found: $gtfFile"
+  exit 1
+fi
+
+# Counting reads per gene before UMI extraction and deduplication
+echo "Counting reads per gene before UMI extraction..."
+featureCounts -a "$gtfFile" -o "${outputPrefix}initial_counts.txt" -p -B -C -T 8 "$bamFile"
+
+# Extract UMIs
+echo "Extracting UMIs from reads..."
+umi_tools extract --bc-pattern=NNNNNN \
+  --stdin "${outputPrefix}1.fastq" \
+  --stdout "${outputPrefix}1.umi.fastq" \
+  --read2-in="${outputPrefix}2.fastq" \
+  --read2-out="${outputPrefix}2.umi.fastq" \
+  --log=extract.log
+
+# Check if UMI extracted fastq files exist
+if [ ! -f "${outputPrefix}1.umi.fastq" ] || [ ! -f "${outputPrefix}2.umi.fastq" ]; then
+  echo "UMI extraction failed or files not found."
+  exit 1
+fi
+
+# Aligning Reads with STAR and handling large numbers of splice junctions
+echo "Aligning reads using STAR..."
+STAR --genomeDir "$genomeDir" \
+     --readFilesIn "${outputPrefix}1.umi.fastq" "${outputPrefix}2.umi.fastq" \
+     --outFileNamePrefix "$outputPrefix" \
+     --outSAMtype BAM SortedByCoordinate \
+     --limitOutSJcollapsed 2000000  # Increased limit for SJ collapsed
+
+if [ ! -f "${outputPrefix}Aligned.sortedByCoord.out.bam" ]; then
+  echo "Alignment failed or output BAM not found."
+  exit 1
+fi
+
+# Deduplicating based on UMIs
+echo "Deduplicating based on UMIs..."
+umi_tools dedup --stdin="${outputPrefix}Aligned.sortedByCoord.out.bam" \
+                --stdout="${outputPrefix}fmt.deumi.sorted.bam" \
+                --log=dedup.log
+
+if [ ! -f "${outputPrefix}fmt.deumi.sorted.bam" ]; then
+  echo "Deduplication failed or output BAM not found."
+  exit 1
+fi
+
+# Filtering PCR duplicates
+echo "Filtering PCR duplicates..."
+samtools view -b -F 0x400 "${outputPrefix}fmt.deumi.sorted.bam" > "${outputPrefix}fmt.deumi.F400.sorted.bam"
+
+if [ ! -f "${outputPrefix}fmt.deumi.F400.sorted.bam" ]; then
+  echo "Filtering failed or output BAM not found."
+  exit 1
+fi
+
+# Counting reads per gene after deduplication
+echo "Counting reads per gene after deduplication..."
+featureCounts -a "$gtfFile" -o "${outputPrefix}final_counts_unique.txt" -g gene_id -t exon -s 0 -p -B "${outputPrefix}fmt.deumi.F400.sorted.bam"
+
+echo "RNA-seq pipeline completed successfully!"
