@@ -1,0 +1,95 @@
+---
+title: "RNA-seq Data Analysis (Correaltion Analysis)"
+author: "Mark Zeimann and Aashish Chaudhary"
+date: "``` 15 May 2024``"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(readr)
+library(dplyr)
+library(rtracklayer)
+library(GenomicRanges)
+```
+
+## Introduction
+
+This document analyzes RNA-seq data, focusing on the relationships between gene length, discrepancies, and GC content across multiple samples.
+
+## Data Loading and Preparation
+
+Load and merge the necessary datasets for each sample.
+
+```{r load-data}
+# Load the previously saved gene length data
+gene_annotations <- read.csv("gene_annotations_with_lengths.csv")
+
+# Define sample IDs
+samples <- paste0("SRR625099", 2:7)
+```
+
+## Processing Each Sample
+
+Define a function to process each sample, perform calculations, and print results directly.
+
+```{r process-sample}
+process_sample <- function(sample_id) {
+  # Load RNA-seq counts data
+  counts_data <- read.table(paste0(sample_id, "_counts.txt"), header = TRUE, sep = "\t", check.names = FALSE)
+  unique_counts_data <- read.table(paste0(sample_id, "_counts_unique.txt"), header = TRUE, sep = "\t", check.names = FALSE)
+  gc_content_data <- read_delim("gc_content.txt", delim = " ", col_names = c("Chr", "Start", "End", "GeneID", "Other", "GC_Content"), 
+                                col_types = cols(Other = col_double(), GC_Content = col_double()))
+
+  # Rename columns for clarity
+  names(counts_data)[ncol(counts_data)] <- "Unfiltered_Count"
+  names(unique_counts_data)[ncol(unique_counts_data)] <- "Unique_Count"
+
+  # Merge counts and GC content data
+  merged_counts_data <- merge(counts_data, unique_counts_data, by = "Geneid")
+  merged_data_with_gc <- merge(merged_counts_data, gc_content_data, by.x = "Geneid", by.y = "GeneID")
+
+  # Merge with gene length data
+  merged_data <- merge(merged_data_with_gc, gene_annotations, by.x = "Geneid", by.y = "gene_id")
+
+  # Log transformation for counts
+  merged_data$log_Unfiltered_Count <- log(merged_data$Unfiltered_Count + 1)
+  merged_data$log_Unique_Count <- log(merged_data$Unique_Count + 1)
+
+  # Calculate discrepancies
+  merged_data$discrepancy <- abs(merged_data$log_Unfiltered_Count - merged_data$log_Unique_Count)
+
+  # Correlation between gene length and discrepancy
+  cor_test_gene_length <- cor.test(merged_data$discrepancy, merged_data$Gene_Length)
+  print(cor_test_gene_length)
+
+  # Create a binary flag for large discrepancies
+  large_discrepancy_genes <- merged_data %>% 
+      filter(discrepancy > quantile(discrepancy, 0.95)) %>%
+      arrange(desc(discrepancy))
+
+  merged_data$large_discrepancy_flag <- ifelse(merged_data$Geneid %in% large_discrepancy_genes$Geneid, "Large", "Small")
+
+  # T-test comparing GC content between genes with high and low discrepancies
+  t_test_gc_discrepancy <- t.test(GC_Content ~ large_discrepancy_flag, data = merged_data)
+  print(t_test_gc_discrepancy)
+
+  return(merged_data)
+}
+```
+
+## Analysis Execution
+
+Process each sample and perform the analyses, printing results directly.
+
+```{r analysis-execution}
+# Loop through each sample
+for (sample_id in samples) {
+  merged_data <- process_sample(sample_id)
+}
+```
+
+## Conclusion
+
+This analysis highlights relationships between gene length, discrepancies, and GC content across multiple samples, providing insights into their interconnections.
