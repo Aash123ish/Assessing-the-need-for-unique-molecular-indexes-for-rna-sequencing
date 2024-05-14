@@ -1,0 +1,146 @@
+---
+title: "Analysis of Dinucleotide Frequencies in Exon Sequences"
+author: "Mark Zeimann and Aashish Chaudhary"
+date: "8 May 2024"
+output: html_document
+---
+
+```{bash, engine.opts='-e', echo=TRUE}
+#!/bin/bash
+
+# Define file paths
+gtf_file="Mus_musculus.GRCm39.111.gtf"
+two_bit_file="mm39.2bit"
+output_bed="exons_with_chr.bed"
+chrom_sizes_file="chrom_sizes.txt"
+filtered_bed="filtered_exons.bed"
+output_fasta="exon_sequences.fa"
+
+# Convert GTF to BED and adjust chromosome names to include 'chr' prefix
+echo "Converting GTF to BED and adjusting chromosome names..."
+awk '$3 == "exon"' $gtf_file | awk 'BEGIN{FS="\t"; OFS="\t"} {
+    gene_id = match($9, /gene_id "([^"]+)"/, arr) ? arr[1] : "NA";
+    print "chr"$1, $4-1, $5, gene_id, "0", $7
+}' > $output_bed
+
+# Check the first few lines to ensure the format is correct
+echo "Checking the converted BED file..."
+head $output_bed
+
+# Generate chromosome sizes file if not already created
+echo "Generating chromosome sizes file..."
+twoBitInfo $two_bit_file $chrom_sizes_file
+
+# Check the first few lines to ensure it is correct
+echo "Checking chromosome sizes file..."
+head $chrom_sizes_file
+
+# Filter BED file to only include valid chromosomes
+echo "Filtering BED file to only include valid chromosomes..."
+awk 'NR==FNR{valid[$1]; next} $1 in valid' $chrom_sizes_file $output_bed > $filtered_bed
+
+# Check how many lines are in the filtered file
+echo "Checking the number of lines in the filtered BED file..."
+wc -l $filtered_bed
+
+# Extract sequences based on the filtered BED file
+echo "Extracting sequences from the .2bit file..."
+twoBitToFa $two_bit_file -bed=$filtered_bed -fo=$output_fasta
+
+# Check the first few entries of the resulting fasta file to confirm it worked
+echo "Checking the first few entries of the resulting FASTA file..."
+head $output_fasta
+
+echo "Sequence extraction complete."
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+library(Biostrings)
+library(parallel)
+library(seqinr)
+library(ggplot2)
+library(tidyr)
+library(vioplot)  # Make sure to install this package if not already installed
+```
+# Loading and summarizing sequence 
+```{r}
+# Load sequences from the FASTA file
+fasta_file <- "exon_sequences.fa"
+sequences <- readDNAStringSet(fasta_file)
+
+# Display basic information about the sequences loaded
+print(summary(sequences))
+```
+```{r}
+# Detect number of cores for parallel processing
+cores <- detectCores()
+```
+
+```{r}
+# Define the names for all possible dinucleotides
+dinucleotide_names <- c("AA", "AC", "AG", "AT", "CA", "CC", "CG", "CT", This R Markdown file includes the full script with explanations interleaved, providing context and description for each part of the analysis.
+                        "GA", "GC", "GG", "GT", "TA", "TC", "TG", "TT")
+
+# Calculate dinucleotide frequencies in parallel
+results <- mclapply(seq_along(sequences), function(idx) {
+  seq <- as.character(sequences[idx])
+  seq_name <- names(sequences)[idx]  # Capture the gene ID from the sequence names
+  seq <- s2c(seq)  # Convert to character vector suitable for count
+  len <- length(seq)
+  
+  # Initialize the frequency vector with zeros for each dinucleotide
+  freqs <- setNames(rep(0, length(dinucleotide_names)), dinucleotide_names)
+  
+  if (len > 1) {
+    mono_counts <- count(seq, wordsize = 1, alphabet = c("A", "G", "T", "C"))
+    dinuc_counts <- count(seq, wordsize = 2, alphabet = c("A", "G", "T", "C"))
+    
+    # Calculate frequencies
+    for (i in names(dinuc_counts)) {
+      n1 <- substr(i, 1, 1)
+      n2 <- substr(i, 2, 2)
+      if (mono_counts[n1] > 0 && mono_counts[n2] > 0) {
+        freqs[i] <- dinuc_counts[i] / (mono_counts[n1] * mono_counts[n2]) * len
+      }
+    }
+  }
+  
+  c(GeneID = seq_name, freqs)
+}, mc.cores = cores)
+```
+
+```{r}
+# Combine results into a data frame
+freq_df <- do.call(rbind, results)
+freq_df <- data.frame(freq_df)
+
+# Set appropriate data types
+freq_df[,-1] <- sapply(freq_df[,-1], as.numeric)  # Convert frequency columns to numeric
+```
+
+```{r}
+# Prepare data for plotting
+freq_long <- gather(freq_df, key = "Dinucleotide", value = "Frequency", -GeneID)
+
+# Calculate the number of unique genes
+num_genes <- length(unique(freq_df$GeneID))
+```
+```{r}
+# Generate violin plot
+p <- ggplot(freq_long, aes(x = Dinucleotide, y = Frequency, fill = Dinucleotide)) +
+  geom_violin(trim = FALSE) +
+  labs(title = paste("Dinucleotide Frequency for Exons of", num_genes, "Genes"),
+       x = "Dinucleotide", y = "Frequency") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Display the plot
+print(p)
+```
+
+```{r}
+# Save the frequency data and plot
+write.csv(freq_df, "nucleotide_frequencies_with_gene_id.csv")
+ggsave("Dinucleotide_Frequency_Violin_Plot.pdf", plot = p, width = 12, height = 8)
+```
+# This R Markdown file includes the full script with explanations interleaved, providing context and description for each part of the analysis.
