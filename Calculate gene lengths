@@ -1,0 +1,4 @@
+# Run awk command to extract and calculate gene lengths
+awk '$3 == "gene" {print $1,$4,$5,$10,$14,$16}' Mus_musculus.GRCm39.111.gtf | \
+sed 's/"//g' | sed 's/;//g' | \
+awk '{OFS="\t"; print $1,$2,$3,$4,$5,($3-$2+1)}' > gene_lengths.tsv
