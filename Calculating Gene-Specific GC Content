@@ -1,0 +1,30 @@
+# Calculating Gene-Specific GC Content
+
+This document outlines the procedure for computing the GC content for each gene using Bash commands and bioinformatics tools such as `bedtools` and `awk`. The process involves extracting exon information from a GTF file, converting it to BED format, calculating GC content, and associating these values with gene IDs.
+
+## Prerequisites
+
+Ensure `bedtools` is installed on your system and the necessary files (`Mus_musculus.GRCm39.104.gtf` and `Mus_musculus.GRCm39.dna.primary_assembly.fa`) are available in your working directory. This script assumes a basic understanding of genomic file formats (GTF, BED) and Unix command-line processing.
+
+## Script Explanation
+
+```bash
+#!/bin/bash
+
+# Extract exons from the GTF file
+awk '$3 == "exon"' Mus_musculus.GRCm39.104.gtf > exons.gtf
+
+# Convert exon information to BED format
+awk -v OFS='\t' '{print $1, $4-1, $5, $9}' exons.gtf > exons.bed
+
+# Calculate GC content using bedtools
+bedtools nuc -fi Mus_musculus.GRCm39.dna.primary_assembly.fa -bed exons.bed > gc_content.txt
+
+# Associate GC content with gene IDs
+bedtools intersect -a gc_content.txt -b Mus_musculus.GRCm39.111.gtf -wa -wb > gc_with_gene_ids.txt
+
+# Format the final output to include gene IDs with GC content
+awk -F'\t' '{
+  match($0, /gene_id "([^"]+)"/, arr);
+  print $1, $2, $3, arr[1], $5, $6;
+}' gc_with_gene_ids.txt > gc_content_with_gene_ids.txt
