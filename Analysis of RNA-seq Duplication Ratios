@@ -1,0 +1,60 @@
+---
+title: "Analysis of RNA-seq Duplication Ratios"
+author: "Mark Zeimann and Aashish chaudhary"
+date: "`9 May 2024`"
+output: html_document
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+```
+
+```{r}
+setwd("/media/aashish/T7/OUT/NEw analysis_2")
+```
+
+```{r}
+process_sample <- function(sample_id) {
+  counts_file <- paste0(sample_id, "_counts.txt")
+  unique_counts_file <- paste0(sample_id, "_counts_unique.txt")
+  
+  if (!file.exists(counts_file) || !file.exists(unique_counts_file)) {
+    warning(paste("Required files for", sample_id, "are missing."))
+    return(NULL)
+  }
+  
+  counts_data <- read.table(counts_file, header = TRUE, sep = "\t", check.names = FALSE)
+  unique_counts_data <- read.table(unique_counts_file, header = TRUE, sep = "\t", check.names = FALSE)
+  
+  names(counts_data)[ncol(counts_data)] <- "Unfiltered_Count"
+  names(unique_counts_data)[ncol(unique_counts_data)] <- "Unique_Count"
+  
+  merged_data <- merge(counts_data, unique_counts_data, by = "Geneid", suffixes = c(".total", ".unique"))
+  
+  merged_data$discrepancy_diff <- merged_data$Unfiltered_Count - merged_data$Unique_Count
+  merged_data$log_Unfiltered_Count <- log(merged_data$Unfiltered_Count + 1)
+  merged_data$log_Unique_Count <- log(merged_data$Unique_Count + 1)
+  merged_data$duplication_ratio <- merged_data$Unfiltered_Count / merged_data$Unique_Count
+  merged_data$sample_id <- sample_id
+  
+  return(merged_data)
+}
+```
+
+```{r}
+samples <- c("SRR6250992", "SRR6250993", "SRR6250994", "SRR6250995", "SRR6250996", "SRR6250997")  # Add or modify sample IDs as necessary
+processed_data_list <- lapply(samples, process_sample)
+processed_data_list <- Filter(Negate(is.null), processed_data_list)
+merged_data_combined <- do.call(rbind, processed_data_list)
+```
+
+```{r}
+correlation_results <- merged_data_combined %>%
+  group_by(sample_id) %>%
+  summarize(
+    cor_discrepancy_diff_unique = cor(discrepancy_diff, Unique_Count, use = "complete.obs"),
+    cor_discrepancy_diff_unfiltered = cor(discrepancy_diff, Unfiltered_Count, use = "complete.obs")
+  )
+print(correlation_results)
+```
