@@ -1,0 +1,40 @@
+---
+title: "Correlation Analysis of Duplication Ratios and Nucleotide Frequencies"
+author: "Mark Zeimann and Aashish Chaudhary"
+date: "`10 May 2024`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+```{r}
+gene_duplication <- read.csv("Geneid_DuplicationRatio.csv")
+nucleotide_freqs <- read.csv("nucleotide_frequencies_with_gene_id.csv")
+```
+
+```{r}
+# Removing rows with NA or Inf values in duplication_ratio
+gene_duplication <- gene_duplication %>% 
+  filter(!is.na(duplication_ratio) & duplication_ratio != Inf)
+
+# Capping extreme values in nucleotide frequencies
+caps <- apply(nucleotide_freqs[,3:18], 2, function(x) quantile(x, 0.99, na.rm = TRUE))
+nucleotide_freqs[,3:18] <- mapply(function(x, cap) pmin(x, cap), nucleotide_freqs[,3:18], caps)
+
+# Merge datasets on GeneID
+merged_data <- merge(gene_duplication, nucleotide_freqs, by.x = "Geneid", by.y = "GeneID")
+```
+
+```{r}
+# Specify nucleotide columns
+nucleotide_columns <- c("AA", "AC", "AG", "AT", "CA", "CC", "CG", "CT", "GA", "GC", "GG", "GT", "TA", "TC", "TG", "TT")
+
+# Calculate correlation matrix
+correlation_matrix <- cor(merged_data[, c("duplication_ratio", nucleotide_columns)], use = "complete.obs")
+
+# Display correlation matrix
+correlation_matrix
+```
