@@ -1,0 +1,81 @@
+---
+title: "Correlation Analysis between Gc  content, Dinucleotide Frequency and Gene length"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(dplyr)
+library(readr)
+```
+
+```{r}
+# Assuming the CSV file is named "Gene_length_correlation.csv" and is in the working directory
+gene_length_correlation <- read_csv("Gene_length_correlation.csv")
+```
+
+```{r}
+correlation_data <- data.frame(
+  SampleID = c("SRR6250992", "SRR6250993", "SRR6250994", "SRR6250995", "SRR6250996", "SRR6250997"),
+  Correlation = c(0.1011383, 0.09155593, 0.1057361, 0.09489991, 0.108848, 0.108839)
+)
+```
+
+```{r}
+correlation_plot_gc <- ggplot(correlation_data, aes(x = SampleID, y = Correlation, fill = Correlation)) +
+  geom_bar(stat = "identity", position = position_dodge(), width = 0.7) +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = median(correlation_data$Correlation), space = "Lab", name="Correlation Coefficient") +
+  labs(title = "Correlation of Discrepancy with GC Content across Samples",
+       x = "Sample ID",
+       y = "Correlation Coefficient") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+correlation_plot_gc
+```
+
+```{r}
+correlation_plot_gene_length <- ggplot(gene_length_correlation, aes(x = sample_id, y = correlation, fill = correlation)) +
+  geom_bar(stat = "identity", position = position_dodge(), width = 0.7) +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = median(gene_length_correlation$correlation), space = "Lab", name="Correlation Coefficient") +
+  labs(title = "Correlation of Gene Length with Duplication Ratio",
+       x = "Sample ID",
+       y = "Correlation Coefficient") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+correlation_plot_gene_length
+```
+
+```{r}
+correlation_df <- data.frame(
+  Dinucleotide = c("TT", "GA", "AG", "AC", "TG", "GC", "CT", "CC", "TA", "GT", "AA", "CA", "TC", "CG", "AT", "GG"),
+  Correlation = c(-0.0039, -0.0025, -0.0025, -0.0021, -0.0015, -0.0003, -0.0002, -0.00003, 0.0003, 0.00036, 0.00037, 0.00055, 0.0026, 0.0027, 0.0039, 0.004)
+)
+correlation_df <- correlation_df %>%
+  arrange(Correlation) %>%
+  mutate(Dinucleotide = factor(Dinucleotide, levels = Dinucleotide))
+correlation_df$Fill <- ifelse(correlation_df$Correlation > 0, "Positive", "Negative")
+```
+
+```{r}
+correlation_df <- data.frame(
+  Dinucleotide = c("TT", "GA", "AG", "AC", "TG", "GC", "CT", "CC", "TA", "GT", "AA", "CA", "TC", "CG", "AT", "GG"),
+  Correlation = c(-0.0039, -0.0025, -0.0025, -0.0021, -0.0015, -0.0003, -0.0002, -0.00003, 0.0003, 0.00036, 0.00037, 0.00055, 0.0026, 0.0027, 0.0039, 0.004)
+)
+correlation_df <- correlation_df %>%
+  arrange(Correlation) %>%
+  mutate(Dinucleotide = factor(Dinucleotide, levels = Dinucleotide))
+correlation_df$Fill <- ifelse(correlation_df$Correlation > 0, "Positive", "Negative")
+```
+```{r}
+correlation_plot_nucleotide <- ggplot(correlation_df, aes(x = Dinucleotide, y = Correlation, fill = Fill)) +
+  geom_col() +
+  labs(title = "Correlation of Dinucleotide Frequencies with Duplication Ratio",
+       x = "Dinucleotide",
+       y = "Correlation Coefficient") +
+  scale_fill_manual(name = "Correlation Type", 
+                    values = c("Positive" = "steelblue", "Negative" = "red")) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+correlation_plot_nucleotide
+```
