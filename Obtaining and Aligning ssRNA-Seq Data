@@ -1,85 +1,78 @@
-# Obtaining and Aligning ssRNA-Seq Data
-@@ -0,0 +1,11 @@
-  #!/bin/bash
-  #need to have the ensembl GTF and FA file in current dir
-  GTF=gencode.vM33.primary_assembly.annotation.gtf
-  FA=GRCm39.primary_assembly.genome.fa
-  CWD=$(pwd)
-  
-  STAR --runMode genomeGenerate \
+Step 1: Generating Genome Index:This step uses STAR to generate a genome index from the provided GTF and FASTA files.
+#!/bin/bash
+# Ensure Ensembl GTF and FASTA files are in the current directory
+GTF=gencode.vM33.primary_assembly.annotation.gtf
+FA=GRCm39.primary_assembly.genome.fa
+CWD=$(pwd)
+
+# Generate genome index using STAR
+STAR --runMode genomeGenerate \
   --sjdbGTFfile $GTF \
   --genomeDir $CWD  \
   --genomeFastaFiles $CWD/$FA \
   --runThreadN $(nproc)
-  15 changes: 15 additions & 0 deletions15  
-  rnaseq/dl.sh
-  @@ -0,0 +1,15 @@
-    #!/bin/bash
-    
-    # download
-    for RUN in $(cat SRR_Acc_List.txt) ; do
+
+
+Step 2: Downloading and Preparing RNA-Seq DataThis script downloads RNA-seq data using the accession list from SRR_Acc_List.txt, unpacks the SRA files into FASTQ format, and then aligns the reads to the mouse genome using STAR.
+#!/bin/bash
+
+# Download RNA-seq data
+for RUN in $(cat SRR_Acc_List.txt); do
   prefetch --max-size 999999999999999999 -p -O . $RUN
-  done
-  
-  # unpack the fastq files
-  for SRA in *sra ; do
+done
+
+# Unpack the FASTQ files
+for SRA in *sra; do
   fastq-dump --split-files $SRA
-  done
-  
-  # map with star to mouse genome
-  # Gencode Release M33 (GRCm39)
-  
-  51 changes: 51 additions & 0 deletions51  
-  rnaseq/run_star.sh
-  @@ -0,0 +1,51 @@
-    #!/bin/bash
-    REF=../ref
-  
-  
-  run_pipeline(){
-    CWD=$(pwd)
-    FQZ1=$1
-    REF=$2
-    FQZ2=$(echo $FQZ1 | sed 's/_1./_2./')
-    FQ1=$(echo $FQZ1 | sed 's/.gz$/-trimmed-pair1.fastq/')
-    FQ2=$(echo $FQZ1 | sed 's/.gz$/-trimmed-pair2.fastq/')
-    BASE=$(echo $1 | sed 's/.fastq.gz//')
-    BAM=/home/ziemannm/barry/map/$BASE.bam
-    
-    # SKEWER Version 0.2.2 (updated in April 4, 2016), Author: Hongshan Jiang
-    skewer -t $(nproc) -q 20 $FQZ1 $FQZ2
-    
-    #Spliced Transcripts Alignment to a Reference (c) Alexander Dobin, 2009-2020
-    #STAR version=2.7.10a
-    #STAR compilation time,server,dir=2022-01-16T16:35:44+00:00 <place not set in Debian package>
-    #For more details see:<https://github.com/alexdobin/STAR>
-    STAR --runThreadN 30 \
+done
+
+# Map reads to the mouse genome using STAR (Gencode Release M33, GRCm39)
+
+Step 3: Running STAR and Processing AlignmentsThis script defines a function to trim adapters, align reads using STAR, and sort BAM files using SAMtools.
+#!/bin/bash
+REF=../ref
+
+run_pipeline(){
+  CWD=$(pwd)
+  FQZ1=$1
+  REF=$2
+  FQZ2=$(echo $FQZ1 | sed 's/_1./_2./')
+  FQ1=$(echo $FQZ1 | sed 's/.gz$/-trimmed-pair1.fastq/')
+  FQ2=$(echo $FQZ1 | sed 's/.gz$/-trimmed-pair2.fastq/')
+  BASE=$(echo $1 | sed 's/.fastq.gz//')
+  BAM=/home/ziemannm/barry/map/$BASE.bam
+
+  # Trim adapters with Skewer
+  skewer -t $(nproc) -q 20 $FQZ1 $FQZ2
+
+  # Align reads with STAR
+  STAR --runThreadN 30 \
     --quantMode GeneCounts \
     --genomeLoad LoadAndKeep  \
     --outSAMtype BAM Unsorted \
     --limitBAMsortRAM 20000000000 \
     --genomeDir $REF \
-    --readFilesIn=$FQ1 $FQ2 \
+    --readFilesIn $FQ1 $FQ2 \
     --outFileNamePrefix $BASE.
-    
-    rm $FQ1 $FQ2
-  }
-  export -f run_pipeline
-  
-  parallel -j1 run_pipeline ::: *_1.fastq.gz ::: $REF
-  
-  STAR --genomeLoad Remove --genomeDir $REF
-  
-  for TAB in *ReadsPerGene.out.tab ; do
+
+  rm $FQ1 $FQ2
+}
+export -f run_pipeline
+
+parallel -j1 run_pipeline ::: *_1.fastq.gz ::: $REF
+
+# Unload the genome index
+STAR --genomeLoad Remove --genomeDir $REF
+
+# Generate gene count table
+for TAB in *ReadsPerGene.out.tab; do
   tail -n +5 $TAB | cut -f1,4 | sed "s/^/${TAB}\t/"
-  done | pigz > 3col.tsv.gz
-  
-  # sort bam files
-  # samtools 1.13
-  # Using htslib 1.13+ds
-  for BAM in *bam ; do
+done | pigz > 3col.tsv.gz
+
+# Sort BAM files and index them using SAMtools
+for BAM in *bam; do
   NAME=$(echo $BAM | sed 's/_1.Aligned.out//')
-  samtools sort  -@ 6 -o $NAME $BAM && rm $BAM
-  done
-  
-  ls *bam | parallel samtools index {}
+  samtools sort -@ 6 -o $NAME $BAM && rm $BAM
+done
+
+ls *bam | parallel samtools index {}
