@@ -1,7 +1,7 @@
 ---
-title: "RNA-seq Data Analysis (Correaltion Analysis)"
+title: "RNA-seq Data Analysis on the basis of length"
 author: "Mark Zeimann and Aashish Chaudhary"
-date: "``` 15 May 2024``"
+date: "```15 May 2024```"
 output: html_document
 ---
 
@@ -10,13 +10,14 @@ knitr::opts_chunk$set(echo = TRUE)
 library(ggplot2)
 library(readr)
 library(dplyr)
+library(purrr)
 library(rtracklayer)
 library(GenomicRanges)
 ```
 
 ## Introduction
 
-This document analyzes RNA-seq data, focusing on the relationships between gene length, discrepancies, and GC content across multiple samples.
+This document analyzes RNA-seq data, focusing on the relationships between gene length, GC content, and read discrepancies across multiple samples.
 
 ## Data Loading and Preparation
 
@@ -32,7 +33,7 @@ samples <- paste0("SRR625099", 2:7)
 
 ## Processing Each Sample
 
-Define a function to process each sample, perform calculations, and print results directly.
+A function to process each sample by merging data, calculating discrepancies, and generating visualizations.
 
 ```{r process-sample}
 process_sample <- function(sample_id) {
@@ -64,32 +65,46 @@ process_sample <- function(sample_id) {
   cor_test_gene_length <- cor.test(merged_data$discrepancy, merged_data$Gene_Length)
   print(cor_test_gene_length)
 
-  # Create a binary flag for large discrepancies
-  large_discrepancy_genes <- merged_data %>% 
-      filter(discrepancy > quantile(discrepancy, 0.95)) %>%
-      arrange(desc(discrepancy))
-
-  merged_data$large_discrepancy_flag <- ifelse(merged_data$Geneid %in% large_discrepancy_genes$Geneid, "Large", "Small")
-
-  # T-test comparing GC content between genes with high and low discrepancies
-  t_test_gc_discrepancy <- t.test(GC_Content ~ large_discrepancy_flag, data = merged_data)
-  print(t_test_gc_discrepancy)
-
   return(merged_data)
 }
 ```
 
-## Analysis Execution
+## Visualization
 
-Process each sample and perform the analyses, printing results directly.
+Process each sample, visualize relationships, and print results directly in the document.
 
-```{r analysis-execution}
+```{r visualization}
 # Loop through each sample
 for (sample_id in samples) {
   merged_data <- process_sample(sample_id)
+
+  # Visualization: Gene Length vs. Discrepancy
+  plot1 <- ggplot(merged_data, aes(x = Gene_Length, y = discrepancy)) +
+      geom_point(alpha = 0.7) +
+      labs(x = "Gene Length", y = "Discrepancy", title = paste("Gene Length vs. Discrepancy for", sample_id)) +
+      theme_minimal()
+  print(plot1)
+
+  # Visualization: Gene Length vs. Discrepancy Colored by GC Content
+  plot2 <- ggplot(merged_data, aes(x = Gene_Length, y = discrepancy, color = GC_Content)) +
+      geom_point(alpha = 0.7) +
+      scale_colour_gradient(low = "blue", high = "red", name = "GC Content") +
+      labs(x = "Gene Length", y = "Discrepancy", title = paste("Gene Length vs. Discrepancy Colored by GC Content for", sample_id)) +
+      theme_minimal()
+  print(plot2)
+
+  # Stratification by GC Quintiles
+  merged_data$GC_Quintile <- cut(merged_data$GC_Content, breaks = quantile(merged_data$GC_Content, probs = 0:5/5), include.lowest = TRUE, labels = FALSE)
+
+  plot3 <- ggplot(merged_data, aes(x = Gene_Length, y = discrepancy, color = as.factor(GC_Quintile))) +
+      geom_point(alpha = 0.7) +
+      scale_color_manual(values = c("green", "yellow", "orange", "red", "black"), name = "GC Quintile") +
+      labs(x = "Gene Length", y = "Discrepancy", title = paste("Gene Length vs. Discrepancy by GC Quintiles for", sample_id)) +
+      theme_minimal()
+  print(plot3)
 }
 ```
 
 ## Conclusion
 
-This analysis highlights relationships between gene length, discrepancies, and GC content across multiple samples, providing insights into their interconnections.
+This analysis highlights relationships between gene length, discrepancies, and GC content across multiple samples, providing visual insights into their interconnections.
