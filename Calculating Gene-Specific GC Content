@@ -1,30 +1,34 @@
-# Calculating Gene-Specific GC Content
-
-This document outlines the procedure for computing the GC content for each gene using Bash commands and bioinformatics tools such as `bedtools` and `awk`. The process involves extracting exon information from a GTF file, converting it to BED format, calculating GC content, and associating these values with gene IDs.
-
-## Prerequisites
-
-Ensure `bedtools` is installed on your system and the necessary files (`Mus_musculus.GRCm39.104.gtf` and `Mus_musculus.GRCm39.dna.primary_assembly.fa`) are available in your working directory. This script assumes a basic understanding of genomic file formats (GTF, BED) and Unix command-line processing.
-
-## Script Explanation
-
-```bash
 #!/bin/bash
 
-# Extract exons from the GTF file
+# This script calculates the GC content for each gene using bioinformatics tools such as bedtools and awk.
+# Ensure you have `bedtools` installed and the required files are in your working directory.
+
+# Step 1: Extract exons from the GTF file
+# This uses awk to filter out entries that are not exons from the GTF file.
 awk '$3 == "exon"' Mus_musculus.GRCm39.104.gtf > exons.gtf
+echo "Exon information extracted from GTF file."
 
-# Convert exon information to BED format
+# Step 2: Convert exon information to BED format
+# BED format requires chromosome, start, and end positions. GTF is 1-based, BED is 0-based for the start position.
 awk -v OFS='\t' '{print $1, $4-1, $5, $9}' exons.gtf > exons.bed
+echo "Exon information converted to BED format."
 
-# Calculate GC content using bedtools
+# Step 3: Calculate GC content using bedtools
+# This command calculates nucleotide content for each interval in a BED file against a reference genome.
 bedtools nuc -fi Mus_musculus.GRCm39.dna.primary_assembly.fa -bed exons.bed > gc_content.txt
+echo "GC content calculated for each exon."
 
-# Associate GC content with gene IDs
+# Step 4: Associate GC content with gene IDs
+# Uses bedtools to intersect GC content data with gene annotations to add gene IDs.
 bedtools intersect -a gc_content.txt -b Mus_musculus.GRCm39.111.gtf -wa -wb > gc_with_gene_ids.txt
+echo "GC content associated with gene IDs."
 
-# Format the final output to include gene IDs with GC content
+# Step 5: Format the final output to include gene IDs with GC content
+# Extracts gene_id from the GTF attribute field and formats the output.
 awk -F'\t' '{
   match($0, /gene_id "([^"]+)"/, arr);
   print $1, $2, $3, arr[1], $5, $6;
 }' gc_with_gene_ids.txt > gc_content_with_gene_ids.txt
+echo "Final GC content data with gene IDs prepared."
+
+echo "Gene-specific GC content calculation completed successfully!"
