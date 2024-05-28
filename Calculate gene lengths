@@ -1,4 +1,26 @@
-# Run awk command to extract and calculate gene lengths
-awk '$3 == "gene" {print $1,$4,$5,$10,$14,$16}' Mus_musculus.GRCm39.111.gtf | \
-sed 's/"//g' | sed 's/;//g' | \
-awk '{OFS="\t"; print $1,$2,$3,$4,$5,($3-$2+1)}' > gene_lengths.tsv
+#!/bin/bash
+
+# This script extracts gene lengths from a GTF file and outputs a TSV file with gene information.
+# Ensure you have the GTF file named `Mus_musculus.GRCm39.111.gtf` in your current directory.
+
+# Step 1: Extract relevant fields for genes
+# Filters the GTF for gene entries, then extracts the chromosome, start and end positions,
+# and gene IDs. This is the initial extraction using awk.
+awk '$3 == "gene" {
+  print $1, $4, $5, $10, $14, $16
+}' Mus_musculus.GRCm39.111.gtf |
+
+# Step 2: Clean up the output
+# Uses sed to remove double quotes and semicolons from the output, which are common in GTF files.
+sed 's/"//g' | sed 's/;//g' |
+
+# Step 3: Calculate gene lengths and format the output
+# Uses awk again to calculate gene length as end position minus start position plus one
+# (to account for inclusive counting in genomic coordinates), and formats the output as a TSV.
+awk '{
+  OFS="\t";  # Set output field separator as tab
+  print $1, $2, $3, $4, $5, ($3-$2+1)
+}' > gene_lengths.tsv
+
+# Completion message
+echo "Gene lengths extraction completed. Output saved to gene_lengths.tsv"
