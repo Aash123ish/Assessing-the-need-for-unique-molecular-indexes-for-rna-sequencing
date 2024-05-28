@@ -1,31 +1,32 @@
 #!/bin/bash
 
 # Set necessary directories and parameters
-genomeDir="/path/to/GRCm39Index"  # Path to the genome index directory
-gtfFile="Mus_musculus.GRCm39.111.gtf"  # GTF file for the Mus musculus genome
-bamFile="SRR6250992.bam"  # Input BAM file
-outputPrefix="SRR6250992_"  # Prefix for all output files
+genomeDir="/path/to/GRCm39Index"  # Specify the path to the genome index directory for STAR alignment
+gtfFile="Mus_musculus.GRCm39.111.gtf"  # Specify the GTF file for the Mus musculus genome, used for read counting and annotation
+bamFile="SRR6250992.bam"  # Specify the input BAM file containing RNA-seq reads
+outputPrefix="SRR6250992_"  # Set the prefix for all output files to organize and identify outputs easily
 
 # Check if genome directory exists
 if [ ! -d "$genomeDir" ]; then
   echo "Genome directory not found: $genomeDir"
-  exit 1
+  exit 1  # Exit the script if the directory does not exist
 fi
 
 # Check if input files exist
 if [ ! -f "$bamFile" ]; then
   echo "Input BAM file not found: $bamFile"
-  exit 1
+  exit 1  # Exit the script if the BAM file does not exist
 fi
 
 if [ ! -f "$gtfFile" ]; then
   echo "GTF file not found: $gtfFile"
-  exit 1
+  exit 1  # Exit the script if the GTF file does not exist
 fi
 
 # Counting reads per gene before UMI extraction and deduplication
 echo "Counting reads per gene before UMI extraction..."
 featureCounts -a "$gtfFile" -o "${outputPrefix}initial_counts.txt" -p -B -C -T 8 "$bamFile"
+# This step quantifies the number of reads aligning to each gene before deduplication, providing initial read counts
 
 # Extract UMIs
 echo "Extracting UMIs from reads..."
@@ -35,11 +36,12 @@ umi_tools extract --bc-pattern=NNNNNN \
   --read2-in "${outputPrefix}2.fastq" \
   --read2-out "${outputPrefix}2.umi.fastq" \
   --log extract.log
+# UMIs (Unique Molecular Identifiers) are extracted from reads to identify unique transcripts later
 
-# Check if UMI extracted fastq files exist
+# Check if UMI extracted FASTQ files exist
 if [ ! -f "${outputPrefix}1.umi.fastq" ] || [ ! -f "${outputPrefix}2.umi.fastq" ]; then
   echo "UMI extraction failed or files not found."
-  exit 1
+  exit 1  # Exit the script if UMI extraction fails
 fi
 
 # Aligning Reads with STAR and handling large numbers of splice junctions
@@ -48,7 +50,8 @@ STAR --genomeDir "$genomeDir" \
      --readFilesIn "${outputPrefix}1.umi.fastq" "${outputPrefix}2.umi.fastq" \
      --outFileNamePrefix "$outputPrefix" \
      --outSAMtype BAM SortedByCoordinate \
-     --limitOutSJcollapsed 4000000  # Increased limit for splice junctions
+     --limitOutSJcollapsed 4000000  # Increased limit for handling more splice junctions
+# This step aligns UMI-extracted reads back to the genome, creating a sorted BAM file
 
 if [ ! -f "${outputPrefix}Aligned.sortedByCoord.out.bam" ]; then
   echo "Alignment failed or output BAM not found."
@@ -60,6 +63,7 @@ echo "Deduplicating based on UMIs..."
 umi_tools dedup --stdin="${outputPrefix}Aligned.sortedByCoord.out.bam" \
                 --stdout="${outputPrefix}fmt.deumi.sorted.bam" \
                 --log dedup.log
+# Deduplicates reads based on UMIs to reduce redundancy and improve the accuracy of gene expression measurements
 
 if [ ! -f "${outputPrefix}fmt.deumi.sorted.bam" ]; then
   echo "Deduplication failed or output BAM not found."
@@ -69,6 +73,7 @@ fi
 # Filtering PCR duplicates
 echo "Filtering PCR duplicates..."
 samtools view -b -F 0x400 "${outputPrefix}fmt.deumi.sorted.bam" > "${outputPrefix}fmt.deumi.F400.sorted.bam"
+# Filters out PCR duplicates that may still be present after UMI-based deduplication
 
 if [ ! -f "${outputPrefix}fmt.deumi.F400.sorted.bam" ]; then
   echo "Filtering failed or output BAM not found."
@@ -78,5 +83,6 @@ fi
 # Counting reads per gene after deduplication
 echo "Counting reads per gene after deduplication..."
 featureCounts -a "$gtfFile" -o "${outputPrefix}final_counts_unique.txt" -g gene_id -t exon -s 0 -p -B "${outputPrefix}fmt.deumi.F400.sorted.bam"
+# Final count of reads per gene after all processing steps, providing data ready for downstream analysis
 
 echo "RNA-seq pipeline completed successfully!"
