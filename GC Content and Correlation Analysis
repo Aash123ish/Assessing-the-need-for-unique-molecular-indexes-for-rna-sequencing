@@ -14,7 +14,7 @@ library(scales)  # for rescale function
 ```
 
 ```{r}
-# Load GC content data, which is constant across samples
+# Load GC content data, which is assumed to be constant across samples
 gc_content_data <- read_delim(
   "gc_content.txt", 
   delim = " ", 
