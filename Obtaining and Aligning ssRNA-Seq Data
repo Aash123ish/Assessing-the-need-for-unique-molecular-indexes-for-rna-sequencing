@@ -1,37 +1,57 @@
-Step 1: Generating Genome Index:This step uses STAR to generate a genome index from the provided GTF and FASTA files.
 #!/bin/bash
-# Ensure Ensembl GTF and FASTA files are in the current directory
+
+#################################################
+# Step 1: Generating Genome Index
+# This step uses STAR to generate a genome index from the provided GTF and FASTA files.
+# Ensure Ensembl GTF and FASTA files are in the current directory.
+#################################################
+
+# Set file names for the GTF and FASTA files
 GTF=gencode.vM33.primary_assembly.annotation.gtf
 FA=GRCm39.primary_assembly.genome.fa
+# Set the current working directory to store the genome index
 CWD=$(pwd)
 
+echo "Starting Genome Index Generation..."
 # Generate genome index using STAR
 STAR --runMode genomeGenerate \
   --sjdbGTFfile $GTF \
-  --genomeDir $CWD  \
+  --genomeDir $CWD \
   --genomeFastaFiles $CWD/$FA \
   --runThreadN $(nproc)
+echo "Genome Index Generated Successfully."
 
+#################################################
+# Step 2: Downloading and Preparing RNA-Seq Data
+# This script downloads RNA-seq data using the accession list from SRR_Acc_List.txt,
+# unpacks the SRA files into FASTQ format, and aligns reads.
+#################################################
 
-Step 2: Downloading and Preparing RNA-Seq DataThis script downloads RNA-seq data using the accession list from SRR_Acc_List.txt, unpacks the SRA files into FASTQ format, and then aligns the reads to the mouse genome using STAR.
-#!/bin/bash
-
+echo "Downloading and Preparing RNA-Seq Data..."
 # Download RNA-seq data
 for RUN in $(cat SRR_Acc_List.txt); do
+  echo "Fetching data for $RUN..."
   prefetch --max-size 999999999999999999 -p -O . $RUN
 done
 
 # Unpack the FASTQ files
 for SRA in *sra; do
+  echo "Converting $SRA to FASTQ format..."
   fastq-dump --split-files $SRA
 done
+echo "RNA-Seq Data Prepared."
 
-# Map reads to the mouse genome using STAR (Gencode Release M33, GRCm39)
+#################################################
+# Step 3: Running STAR and Processing Alignments
+# This script defines a function to trim adapters, align reads using STAR,
+# and sort BAM files using SAMtools.
+#################################################
 
-Step 3: Running STAR and Processing AlignmentsThis script defines a function to trim adapters, align reads using STAR, and sort BAM files using SAMtools.
-#!/bin/bash
+echo "Processing Alignments..."
+# Define reference directory
 REF=../ref
 
+# Define pipeline function
 run_pipeline(){
   CWD=$(pwd)
   FQZ1=$1
@@ -42,37 +62,47 @@ run_pipeline(){
   BASE=$(echo $1 | sed 's/.fastq.gz//')
   BAM=/home/ziemannm/barry/map/$BASE.bam
 
+  echo "Trimming adapters from $FQZ1 and $FQZ2..."
   # Trim adapters with Skewer
   skewer -t $(nproc) -q 20 $FQZ1 $FQZ2
 
+  echo "Aligning reads for $BASE..."
   # Align reads with STAR
   STAR --runThreadN 30 \
     --quantMode GeneCounts \
-    --genomeLoad LoadAndKeep  \
+    --genomeLoad LoadAndKeep \
     --outSAMtype BAM Unsorted \
     --limitBAMsortRAM 20000000000 \
     --genomeDir $REF \
     --readFilesIn $FQ1 $FQ2 \
     --outFileNamePrefix $BASE.
 
+  echo "Cleaning up temporary files for $BASE..."
   rm $FQ1 $FQ2
 }
 export -f run_pipeline
 
+# Run pipeline in parallel for all matched FASTQ files
 parallel -j1 run_pipeline ::: *_1.fastq.gz ::: $REF
 
+echo "Removing Loaded Genome..."
 # Unload the genome index
 STAR --genomeLoad Remove --genomeDir $REF
 
+echo "Generating Gene Count Table..."
 # Generate gene count table
 for TAB in *ReadsPerGene.out.tab; do
   tail -n +5 $TAB | cut -f1,4 | sed "s/^/${TAB}\t/"
 done | pigz > 3col.tsv.gz
 
+echo "Sorting and Indexing BAM Files..."
 # Sort BAM files and index them using SAMtools
 for BAM in *bam; do
   NAME=$(echo $BAM | sed 's/_1.Aligned.out//')
   samtools sort -@ 6 -o $NAME $BAM && rm $BAM
 done
 
+# Index sorted BAM files
 ls *bam | parallel samtools index {}
+
+echo "RNA-seq Pipeline Completed Successfully."
