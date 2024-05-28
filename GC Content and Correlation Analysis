@@ -1,61 +1,66 @@
 ---
 title: "GC Content and correlation"
 author: "Mark Zeimann and Aashish Chaudhary"
-date: "`12 May 2024`"
+date: "`15 May 2024`"  
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
+# Load necessary libraries for data manipulation and visualization
 knitr::opts_chunk$set(echo = TRUE)
 library(ggplot2)
 library(readr)
 library(dplyr)
-library(scales)  # for rescale function
+library(scales)  # Used for rescaling continuous variables for visualizations
 ```
 
-```{r}
-# Load GC content data, which is assumed to be constant across samples
+# Load GC content data from a delimited text file
 gc_content_data <- read_delim(
   "gc_content.txt", 
-  delim = " ", 
-  col_names = c("Chr", "Start", "End", "GeneID", "Other", "GC_Content"),
-  col_types = cols(Chr = col_character(), GeneID = col_character(), Other = col_skip(), GC_Content = col_double())
+  delim = " ",  # Specify delimiter used in the file
+  col_names = c("Chr", "Start", "End", "GeneID", "Other", "GC_Content"),  # Define column names
+  col_types = cols(
+    Chr = col_character(),        # Chromosome names as characters
+    GeneID = col_character(),     # Gene IDs as characters
+    Other = col_skip(),           # Skip columns not needed
+    GC_Content = col_double()     # GC content as double precision numbers
+  )
 )
 ```
-
 ```{r}
+# Define a function to process and analyze each sample
 process_and_analyze_sample <- function(sample_id) {
+  # Define file paths for counts data
   counts_file <- paste0(sample_id, "_counts.txt")
   unique_counts_file <- paste0(sample_id, "_counts_unique.txt")
   
-  # Check if data files exist
+  # Ensure data files exist before proceeding
   if (!file.exists(counts_file) || !file.exists(unique_counts_file)) {
     warning(paste("Required files for", sample_id, "are missing."))
     return(NULL)
   }
   
-  # Load count data
+  # Load and prepare count data
   counts_data <- read.table(counts_file, header = TRUE, sep = "\t")
   unique_counts_data <- read.table(unique_counts_file, header = TRUE, sep = "\t")
-  
-  # Rename the counts columns for clarity
+  # Rename last columns for clarity
   names(counts_data)[ncol(counts_data)] <- "Unfiltered_Count"
   names(unique_counts_data)[ncol(unique_counts_data)] <- "Unique_Count"
   
-  # Merge the datasets
+  # Merge count data with GC content data
   merged_counts_data <- merge(counts_data, unique_counts_data, by = "Geneid")
   merged_data_with_gc <- merge(merged_counts_data, gc_content_data, by.x = "Geneid", by.y = "GeneID")
   
-  # Data transformations and preliminary calculations
+  # Perform data transformations and calculate discrepancies
   merged_data_with_gc$log_Unfiltered_Count <- log(merged_data_with_gc$Unfiltered_Count + 1)
   merged_data_with_gc$log_Unique_Count <- log(merged_data_with_gc$Unique_Count + 1)
   merged_data_with_gc$discrepancy <- abs(merged_data_with_gc$log_Unfiltered_Count - merged_data_with_gc$log_Unique_Count)
-  merged_data_with_gc$large_discrepancy_flag <- ifelse(merged_data_with_gc$discrepancy > quantile(merged_data_with_gc$discrepancy, 0.95), "Large", "Small")
+  merged_data_with_gc$large_discrepancy_flag <- ifelse(
+    merged_data_with_gc$discrepancy > quantile(merged_data_with_gc$discrepancy, 0.95), "Large", "Small"
+  )
   
-  # Calculate GC Quintile before plotting
-  merged_data_with_gc$GC_Quintile <- cut(merged_data_with_gc$GC_Content, breaks = quantile(merged_data_with_gc$GC_Content, probs = 0:5/5), include.lowest = TRUE, labels = FALSE)
-  
-  # GC Content Plot
+  # Visualize data
+  # Plotting log counts colored by GC content
   gcContentPlot <- ggplot(merged_data_with_gc, aes(x = log_Unfiltered_Count, y = log_Unique_Count, color = GC_Content)) +
     geom_point(alpha = 0.7) +
     scale_colour_gradientn(colors = c("blue", "purple", "red"), values = rescale(c(30, 50, 70)), name = "GC Content") +
@@ -63,7 +68,7 @@ process_and_analyze_sample <- function(sample_id) {
     theme_minimal()
   print(gcContentPlot)
   
-  # GC Content Quintiles Plot
+  # Plotting by GC content quintiles
   gcQuintilePlot <- ggplot(merged_data_with_gc, aes(x = log_Unfiltered_Count, y = log_Unique_Count, color = as.factor(GC_Quintile))) +
     geom_point(alpha = 0.7) +
     scale_color_manual(values = c("green", "yellow", "orange", "red", "black"), name = "GC Quintile") +
@@ -72,6 +77,7 @@ process_and_analyze_sample <- function(sample_id) {
   print(gcQuintilePlot)
   
   # Statistical analysis
+  # T-test and correlation test between discrepancy and GC content
   t_test_result <- t.test(GC_Content ~ large_discrepancy_flag, data = merged_data_with_gc)
   cor_test_result <- cor.test(merged_data_with_gc$discrepancy, merged_data_with_gc$GC_Content)
   
@@ -81,9 +87,9 @@ process_and_analyze_sample <- function(sample_id) {
   print(cor_test_result)
 }
 ```
-
 ```{r}
+# List of sample IDs to process
 samples <- paste0("SRR625099", 2:7)
+# Apply the analysis function to each sample
 lapply(samples, process_and_analyze_sample)
 ```
-
