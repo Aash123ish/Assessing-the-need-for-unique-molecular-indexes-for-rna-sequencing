@@ -123,4 +123,3 @@ write.csv(freq_df, "nucleotide_frequencies_with_gene_id.csv")
 ggsave("Dinucleotide_Frequency_Violin_Plot.pdf", plot = p, width = 12, height 8)
 ```
 
-This comprehensive script provides a full workflow for the analysis of dinucleotide frequencies in exon sequences extracted from a genome, including data extraction, calculation, and visualization steps. Each segment is fully documented with comments to assist in understanding and replicating the analysis. Adjust file paths and library dependencies as necessary for your specific setup and dataset.
